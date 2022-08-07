@@ -8,15 +8,26 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"sync"
 	"time"
 )
 
-func main() {
-	destination := os.Args[1]
+var destinations = os.Args[1:]
+var mu sync.Mutex
+var currentDestination int = 0
+
+func loadBalanceHandler(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	// select a backend
+
+	destination := destinations[currentDestination%len(destinations)]
 	rpURL, err := url.Parse(destination)
 	if err != nil {
 		log.Fatal(err)
 	}
+	currentDestination++
+
+	mu.Unlock()
 
 	rp := &httputil.ReverseProxy{
 		Director: func(r *http.Request) {
@@ -27,7 +38,12 @@ func main() {
 		},
 	}
 
-	http.Handle("/", rp)
+	rp.ServeHTTP(w, r)
+
+}
+
+func main() {
+	http.HandleFunc("/", loadBalanceHandler)
 
 	srv := &http.Server{
 		Addr:         ":8080",
