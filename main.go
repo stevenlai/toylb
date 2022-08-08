@@ -12,20 +12,24 @@ import (
 	"time"
 )
 
-var destinations = os.Args[1:]
+var backends []*Backend
+
+type Backend struct {
+	URL string
+}
+
 var mu sync.Mutex
-var currentDestination int = 0
+var currentBackend int
 
 func loadBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	mu.Lock()
-	// select a backend
 
-	destination := destinations[currentDestination%len(destinations)]
-	rpURL, err := url.Parse(destination)
+	destination := backends[currentBackend%len(backends)]
+	rpURL, err := url.Parse(destination.URL)
 	if err != nil {
 		log.Fatal(err)
 	}
-	currentDestination++
+	currentBackend++
 
 	mu.Unlock()
 
@@ -42,7 +46,18 @@ func loadBalanceHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func loadBackendFromConfig(be []string) []*Backend {
+	var backends []*Backend
+	for _, s := range be {
+		backends = append(backends, &Backend{URL: s})
+	}
+
+	return backends
+}
+
 func main() {
+	backends = loadBackendFromConfig(os.Args[1:])
+
 	http.HandleFunc("/", loadBalanceHandler)
 
 	srv := &http.Server{
