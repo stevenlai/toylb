@@ -9,27 +9,44 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"sync/atomic"
 	"time"
 )
-
-var backends []*Backend
 
 type Backend struct {
 	URL string
 }
 
+type BackendPool struct {
+	backends       []*Backend
+	currentBackend uint64
+}
+
+var backendPool *BackendPool
+
+func NewBackendPool(bes []*Backend) *BackendPool {
+	bp := BackendPool{
+		backends: bes,
+	}
+	return &bp
+}
+
+func (bp *BackendPool) NextIndex() uint64 {
+	return atomic.AddUint64(&bp.currentBackend, uint64(1)) % uint64(len(bp.backends))
+}
+
 var mu sync.Mutex
-var currentBackend int
 
 func loadBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	mu.Lock()
 
-	destination := backends[currentBackend%len(backends)]
-	rpURL, err := url.Parse(destination.URL)
+	backend := backendPool.backends[backendPool.currentBackend]
+	rpURL, err := url.Parse(backend.URL)
 	if err != nil {
 		log.Fatal(err)
 	}
-	currentBackend++
+
+	backendPool.currentBackend = backendPool.NextIndex()
 
 	mu.Unlock()
 
@@ -56,7 +73,8 @@ func loadBackendFromConfig(be []string) []*Backend {
 }
 
 func main() {
-	backends = loadBackendFromConfig(os.Args[1:])
+	backends := loadBackendFromConfig(os.Args[1:])
+	backendPool = NewBackendPool(backends)
 
 	http.HandleFunc("/", loadBalanceHandler)
 
