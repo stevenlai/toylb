@@ -8,12 +8,29 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"sync"
 	"sync/atomic"
 	"time"
 )
 
 type Backend struct {
-	URL string
+	URL   string
+	Alive bool
+	sync.RWMutex
+}
+
+func (b *Backend) SetAlive(alive bool) {
+	b.Lock()
+	b.Alive = alive
+	b.Unlock()
+}
+
+func (b *Backend) IsAlive() bool {
+	var alive bool
+	b.RLock()
+	alive = b.Alive
+	b.RUnlock()
+	return alive
 }
 
 type BackendPool struct {
@@ -34,8 +51,25 @@ func (bp *BackendPool) NextIndex() uint64 {
 	return atomic.AddUint64(&bp.currentBackend, uint64(1)) % uint64(len(bp.backends))
 }
 
+func (bp *BackendPool) GetNextBackend() *Backend {
+	next := bp.NextIndex()
+	backendCount := uint64(len(bp.backends))
+	l := backendCount + next
+	for i := next; i < l; i++ {
+		idx := i % backendCount
+		if bp.backends[idx].Alive {
+			if i != next {
+				atomic.StoreUint64(&bp.currentBackend, idx)
+			}
+			return bp.backends[idx]
+		}
+	}
+
+	return nil
+}
+
 func loadBalanceHandler(w http.ResponseWriter, r *http.Request) {
-	backend := backendPool.backends[backendPool.currentBackend]
+	backend := backendPool.GetNextBackend()
 	rpURL, err := url.Parse(backend.URL)
 	if err != nil {
 		log.Fatal(err)
@@ -59,7 +93,7 @@ func loadBalanceHandler(w http.ResponseWriter, r *http.Request) {
 func loadBackendFromConfig(be []string) []*Backend {
 	var backends []*Backend
 	for _, s := range be {
-		backends = append(backends, &Backend{URL: s})
+		backends = append(backends, &Backend{URL: s, Alive: true})
 	}
 
 	return backends
