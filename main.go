@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -35,11 +34,7 @@ func (bp *BackendPool) NextIndex() uint64 {
 	return atomic.AddUint64(&bp.currentBackend, uint64(1)) % uint64(len(bp.backends))
 }
 
-var mu sync.Mutex
-
 func loadBalanceHandler(w http.ResponseWriter, r *http.Request) {
-	mu.Lock()
-
 	backend := backendPool.backends[backendPool.currentBackend]
 	rpURL, err := url.Parse(backend.URL)
 	if err != nil {
@@ -47,8 +42,6 @@ func loadBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	backendPool.currentBackend = backendPool.NextIndex()
-
-	mu.Unlock()
 
 	rp := &httputil.ReverseProxy{
 		Director: func(r *http.Request) {
