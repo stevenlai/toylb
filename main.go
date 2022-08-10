@@ -75,8 +75,6 @@ func loadBalanceHandler(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(err)
 	}
 
-	backendPool.currentBackend = backendPool.NextIndex()
-
 	rp := &httputil.ReverseProxy{
 		Director: func(r *http.Request) {
 			r.URL.Host = rpURL.Host
