@@ -14,7 +14,7 @@ import (
 )
 
 type Backend struct {
-	URL   string
+	URL   *url.URL
 	Alive bool
 	sync.RWMutex
 }
@@ -70,28 +70,28 @@ func (bp *BackendPool) GetNextBackend() *Backend {
 
 func loadBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	backend := backendPool.GetNextBackend()
-	rpURL, err := url.Parse(backend.URL)
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	rp := &httputil.ReverseProxy{
 		Director: func(r *http.Request) {
-			r.URL.Host = rpURL.Host
+			r.URL.Host = backend.URL.Host
 			r.URL.Path = "/"
-			r.URL.Scheme = rpURL.Scheme
-			r.Host = rpURL.Host
+			r.URL.Scheme = backend.URL.Scheme
+			r.Host = backend.URL.Host
 		},
 	}
 
 	rp.ServeHTTP(w, r)
-
 }
 
 func loadBackendFromConfig(be []string) []*Backend {
 	var backends []*Backend
+
 	for _, s := range be {
-		backends = append(backends, &Backend{URL: s, Alive: true})
+		backendUrl, err := url.Parse(s)
+		if err != nil {
+			log.Fatal(err)
+		}
+		backends = append(backends, &Backend{URL: backendUrl, Alive: true})
 	}
 
 	return backends
