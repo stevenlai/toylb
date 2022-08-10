@@ -101,13 +101,12 @@ func main() {
 	backends := loadBackendFromConfig(os.Args[1:])
 	backendPool = NewBackendPool(backends)
 
-	http.HandleFunc("/", loadBalanceHandler)
-
 	srv := &http.Server{
 		Addr:         ":8080",
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,
+		Handler:      http.HandlerFunc(loadBalanceHandler),
 	}
 
 	go func() {
