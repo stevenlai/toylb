@@ -68,8 +68,23 @@ func (bp *BackendPool) GetNextBackend() *Backend {
 	return nil
 }
 
+type key int
+
+const Retries key = iota
+
+func GetRetriesFromContext(r *http.Request) int {
+	if retries, ok := r.Context().Value(Retries).(int); ok {
+		return retries
+	}
+	return 0
+}
+
 func loadBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	backend := backendPool.GetNextBackend()
+	if backend == nil {
+		http.Error(w, "No backend available", http.StatusServiceUnavailable)
+		return
+	}
 
 	rp := &httputil.ReverseProxy{
 		Director: func(r *http.Request) {
@@ -78,6 +93,19 @@ func loadBalanceHandler(w http.ResponseWriter, r *http.Request) {
 			r.URL.Scheme = backend.URL.Scheme
 			r.Host = backend.URL.Host
 		},
+	}
+
+	rp.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		retries := GetRetriesFromContext(r)
+		if retries < 3 {
+			<-time.After(10 * time.Millisecond)
+			ctx := context.WithValue(r.Context(), Retries, retries+1)
+			rp.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
+		backend.SetAlive(false)
+		http.Error(w, "Try again", http.StatusServiceUnavailable)
 	}
 
 	rp.ServeHTTP(w, r)
