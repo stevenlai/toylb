@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -66,6 +68,13 @@ func (bp *BackendPool) GetNextBackend() *Backend {
 	}
 
 	return nil
+}
+
+func (bp *BackendPool) HealthCheck() {
+	for _, b := range bp.backends {
+		alive := isBackendAlive(b.URL)
+		b.SetAlive(alive)
+	}
 }
 
 type key int
@@ -144,6 +153,24 @@ func loadBackendFromConfig(be []string) []*Backend {
 	return backends
 }
 
+func isBackendAlive(u *url.URL) bool {
+	timeout := 2 * time.Second
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:80", u.Host), timeout)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
+
+func runPassiveHealthCheck() {
+	ticker := time.NewTicker(time.Second * 30)
+	for {
+		<-ticker.C
+		backendPool.HealthCheck()
+	}
+}
+
 func main() {
 	backends := loadBackendFromConfig(os.Args[1:])
 	backendPool = NewBackendPool(backends)
@@ -162,6 +189,8 @@ func main() {
 			log.Println(err)
 		}
 	}()
+
+	go healthCheck()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
