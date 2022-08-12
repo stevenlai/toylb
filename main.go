@@ -70,7 +70,10 @@ func (bp *BackendPool) GetNextBackend() *Backend {
 
 type key int
 
-const Retries key = iota
+const (
+	Retries key = iota
+	Attempts
+)
 
 func GetRetriesFromContext(r *http.Request) int {
 	if retries, ok := r.Context().Value(Retries).(int); ok {
@@ -79,7 +82,20 @@ func GetRetriesFromContext(r *http.Request) int {
 	return 0
 }
 
+func GetAttemptsFromContext(r *http.Request) int {
+	if attempts, ok := r.Context().Value(Attempts).(int); ok {
+		return attempts
+	}
+	return 1
+}
+
 func loadBalanceHandler(w http.ResponseWriter, r *http.Request) {
+	attempts := GetAttemptsFromContext(r)
+	if attempts > 3 {
+		http.Error(w, "Service not available", http.StatusServiceUnavailable)
+		return
+	}
+
 	backend := backendPool.GetNextBackend()
 	if backend == nil {
 		http.Error(w, "No backend available", http.StatusServiceUnavailable)
@@ -105,7 +121,10 @@ func loadBalanceHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		backend.SetAlive(false)
-		http.Error(w, "Try again", http.StatusServiceUnavailable)
+
+		attempts := GetAttemptsFromContext(r)
+		ctx := context.WithValue(r.Context(), Attempts, attempts+1)
+		loadBalanceHandler(w, r.WithContext(ctx))
 	}
 
 	rp.ServeHTTP(w, r)
