@@ -23,6 +23,10 @@ func loadBackendFromConfig(be []string) []*Backend {
 		backends = append(backends, NewBackend(backendUrl))
 	}
 
+	if len(backends) < 1 {
+		os.Exit(1)
+	}
+
 	return backends
 }
 
