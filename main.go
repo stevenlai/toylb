@@ -190,7 +190,7 @@ func main() {
 		}
 	}()
 
-	go healthCheck()
+	go runPassiveHealthCheck()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
