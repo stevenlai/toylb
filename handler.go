@@ -1,10 +1,7 @@
 package main
 
 import (
-	"context"
 	"net/http"
-	"net/http/httputil"
-	"time"
 )
 
 type key int
@@ -41,30 +38,5 @@ func loadBalanceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rp := &httputil.ReverseProxy{
-		Director: func(r *http.Request) {
-			r.URL.Host = backend.URL.Host
-			r.URL.Path = "/"
-			r.URL.Scheme = backend.URL.Scheme
-			r.Host = backend.URL.Host
-		},
-	}
-
-	rp.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		retries := GetRetriesFromContext(r)
-		if retries < 3 {
-			<-time.After(10 * time.Millisecond)
-			ctx := context.WithValue(r.Context(), Retries, retries+1)
-			rp.ServeHTTP(w, r.WithContext(ctx))
-			return
-		}
-
-		backend.SetAlive(false)
-
-		attempts := GetAttemptsFromContext(r)
-		ctx := context.WithValue(r.Context(), Attempts, attempts+1)
-		loadBalanceHandler(w, r.WithContext(ctx))
-	}
-
-	rp.ServeHTTP(w, r)
+	backend.Proxy.ServeHTTP(w, r)
 }

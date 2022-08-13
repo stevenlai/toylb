@@ -20,7 +20,7 @@ func loadBackendFromConfig(be []string) []*Backend {
 		if err != nil {
 			log.Fatal(err)
 		}
-		backends = append(backends, &Backend{URL: backendUrl, Alive: true})
+		backends = append(backends, NewBackend(backendUrl))
 	}
 
 	return backends
